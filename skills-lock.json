@@ -1,0 +1,21 @@
+{
+  "version": 2,
+  "skills": {
+    "capacitor-best-practices": {
+      "source": "Cap-go/capgo-skills",
+      "commit": "e82217b8fa76e11a2b2fdb49c6a221df8359cb54",
+      "sourceType": "github",
+      "skillPath": "skills/capacitor-best-practices/SKILL.md",
+      "computedHash": "541b0dd17db972b1eee59ccab876e68e5db99d130c09db2c43a88afb95154db9",
+      "installMode": "copy"
+    },
+    "monorepo-management": {
+      "source": "wshobson/agents",
+      "commit": "34e50fee32114afd9475f25d81492712f08cb71c",
+      "sourceType": "github",
+      "skillPath": "plugins/developer-essentials/skills/monorepo-management/SKILL.md",
+      "computedHash": "5564dab4bcade8f4c61fc81220cecc5cf62802574a1c90ee30b47c830e4410c3",
+      "installMode": "copy"
+    }
+  }
+}
