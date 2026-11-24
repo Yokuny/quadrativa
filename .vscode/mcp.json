@@ -1,0 +1,32 @@
+{
+  "servers": {
+    "context7": {
+      "type": "http",
+      "url": "https://mcp.context7.com/mcp",
+      "headers": {
+        "Authorization": "Bearer ${input:context7-api-key}"
+      }
+    },
+    "asaas": {
+      "type": "http",
+      "url": "https://docs.asaas.com/mcp",
+      "headers": {
+        "access_token": "${input:asaas-api-key}"
+      }
+    }
+  },
+  "inputs": [
+    {
+      "id": "context7-api-key",
+      "type": "promptString",
+      "description": "Context7 API key (https://context7.com/dashboard?tab=overview&apiKeyAction=create)",
+      "password": true
+    },
+    {
+      "id": "asaas-api-key",
+      "type": "promptString",
+      "description": "Asaas API key ($aact_prod_... ou $aact_hmlg_...) — https://www.asaas.com/customerApiAccessToken/index",
+      "password": true
+    }
+  ]
+}
