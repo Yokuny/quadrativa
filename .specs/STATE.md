@@ -50,4 +50,12 @@
 - **Date**: 2026-11-24
 - **Status**: active
 
+### AD-007
+- **Decision**: Gateway de pagamento é o **Asaas**. Cada recebedor (quadra, árbitro, jogador de aluguel) é uma subconta Asaas em nome próprio; cada cobrança usa split para as subcontas, a retenção até o fim do jogo usa a Conta Escrow (liberação por `POST /v3/escrow/{id}/finish`) e cancelamento e W.O. usam estorno parcial com `splitRefunds`. O dinheiro de terceiros nunca passa pela conta da plataforma, que recebe só a própria taxa. Plano B: PagBank (custódia por recebedor com data por pedido).
+- **Reason**: Único dos 11 gateways pesquisados que documenta de forma nativa e self-service split para N recebedores, custódia e estorno parcial por recebedor; o usuário já integrou o Asaas no CRM (webhook por token, worker de reconciliação, transições atômicas) e tem o MCP oficial configurado. Split na origem mantém a plataforma fora do papel de subcredenciadora (Res. BCB 522/2025). Detalhes: `reports/Gateways de pagamento para marketplace.md`. User: "define como o assas".
+- **Trade-off**: Pix com tarifa fixa por cobrança (pesa em tickets pequenos); cartão liquida em ~D+32 por parcela; sem parâmetro de juros do parcelamento para o comprador (backend calcula o total e o split é por valor fixo); sem tokenização de cartão no cliente (avaliar o Checkout hospedado para tirar o backend do escopo PCI); sem header de idempotência (usar `externalReference`); sem webhook de mudança do escrow (conciliação por polling no worker); `daysToExpire` do escrow é por subconta, não por cobrança; período de avaliação inicial de 10 subcontas e R$ 2 mil por subconta. **Pendente de prova no sandbox**: `splitRefunds` com o escrow ainda ativo — se falhar, esta decisão é revista. As regras do briefing que conflitam com o Asaas e com o CDC (caução da arbitragem, 5% do outro time no cancelamento, 30% no W.O., taxa nunca devolvida, liberação no fim do jogo para cartão) serão revistas na spec de pagamentos.
+- **Scope**: Módulo de pagamentos da API, worker de conciliação, cadastro de recebedores e telas de pagamento.
+- **Date**: 2026-11-24
+- **Status**: active
+
 ## Handoff
