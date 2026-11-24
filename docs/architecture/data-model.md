@@ -102,7 +102,12 @@ Pela arquitetura de referência do Ethica, **cada tabela tem um único módulo d
 | `notifications` | `notifications`, `push_devices` |
 | `worker` | `jobs` |
 
-Dependências esperadas, sem ciclos: `identity`, `geo` ← `profiles`, `courts`, `teams` ← `matches` ← `hiring` ← `payments` ← `settlement` ← `ledger`. `reputation`, `community` e `notifications` reagem por evento. `matches` precisa saber se um time está bloqueado por pendência. Essa consulta vai ao service de `settlement`, e essa dependência inverte o sentido. Para não haver ciclo, `settlement` emite `settlement:debt_opened` e `settlement:debt_paid`, e `teams` mantém uma marca de bloqueio. Uma alternativa é `matches` consultar uma função pura de `settlement` que não volta a importar `matches`. A escolha fica para o design da `foundation`.
+Dependências esperadas entre services, sem ciclos: `identity`, `geo` ← `profiles`, `courts`, `teams` ← `matches` ← `hiring` ← `payments` ← `settlement` ← `ledger`. `reputation`, `community` e `notifications` reagem por evento. Uma FK entre tabelas de módulos diferentes só garante integridade; quem lê e escreve continua sendo o módulo dono. As FKs seguem o mesmo sentido das dependências, com duas exceções conhecidas:
+
+- `check_ins.hire_id` (`matches` → `hiring`): o check-in de árbitro ou jogador começa no service de `hiring`, que valida a contratação e chama `matches` para gravar. `matches` não importa `hiring`, e a FK garante que a contratação existe.
+- Bloqueio por pendência: `matches`, `hiring` e `teams` precisam saber se um time tem `debts` abertas, que são de `settlement`. Para não criar ciclo, `settlement` emite `settlement:debt_opened` e `settlement:debt_paid`, e `teams` mantém uma marca de bloqueio. Uma alternativa é uma função pura de `settlement` que não importa ninguém. A escolha fica para o design da `foundation`.
+
+`payments` não aponta para `settlement`: o vínculo entre acerto, estorno e pendência fica do lado do acerto (`settlement_lines.refund_id`, `settlement_lines.debt_id`, `debts.settlement_charge_id`).
 
 ## 3. Tabelas
 
@@ -349,7 +354,7 @@ Módulo dono: **`matches`**. Jogo marcado entre dois times numa reserva (sessõe
 | `id` | `uuid` | **PK** `DEFAULT gen_random_uuid()` |
 | `booking_id` | `uuid` | **FK** → `bookings`, `UNIQUE` (1:1) |
 | `court_id` | `uuid` | **FK** → `courts` (cópia de leitura) |
-| `city_id` | `uuid` | **FK** → `cities` |
+| `city_id` | `uuid` | **FK** → `cities` (cópia de leitura) |
 | `home_team_id` | `uuid` | **FK** → `teams`, quem marcou |
 | `away_team_id` | `uuid` | **FK** → `teams`; nulo enquanto for desafio aberto |
 | `starts_at` | `timestamptz` | = `lower(bookings.slot)` |
@@ -516,13 +521,12 @@ Módulo dono: **`payments`**. Linhas do valor mostradas na tela de pagamento. Ca
 | `kind` | `charge_item_kind` | `court_share`, `referee_fee`, `player_fee`, `service_fee`, `payment_tariff`, `installment_surcharge`, `referee_deposit`, `debt_principal` |
 | `match_id` | `uuid` | **FK** → `matches` |
 | `hire_share_id` | `uuid` | **FK** → `hire_shares` |
-| `debt_id` | `uuid` | **FK** → `debts` |
-| `payee_id` | `uuid` | **FK** → `payees`; nulo para taxa, tarifa e acréscimo |
+| `payee_id` | `uuid` | **FK** → `payees`; nulo para taxa, tarifa, acréscimo e pendência devida à plataforma |
 | `amount_cents` | `bigint` | `CHECK (>= 0)` |
 | `rate_bp` | `integer` | taxa aplicada em pontos-base (500 = 5%), quando houver |
 | `created_at` | `timestamptz` | `NOT NULL DEFAULT now()` |
 
-Restrições: `CHECK (num_nonnulls(match_id, hire_share_id, debt_id) >= 1)`; `CHECK (kind NOT IN ('court_share', 'referee_fee', 'player_fee', 'referee_deposit', 'debt_principal') OR payee_id IS NOT NULL)`: dinheiro de terceiro nunca fica sem recebedor (AD-007).
+Restrições: `CHECK (kind NOT IN ('court_share', 'referee_fee', 'player_fee', 'referee_deposit') OR payee_id IS NOT NULL)`: dinheiro de terceiro nunca fica sem recebedor (AD-007); `debt_principal` sem `payee_id` é pendência devida à plataforma; a cobrança de uma pendência é achada por `debts.settlement_charge_id`.
 
 #### `gateway_payments`
 
@@ -571,7 +575,6 @@ Módulo dono: **`payments`**. Estorno pedido por nós. O Asaas não devolve id d
 | `id` | `uuid` | **PK** `DEFAULT gen_random_uuid()` |
 | `charge_id` | `uuid` | **FK** → `charges` |
 | `gateway_payment_id` | `uuid` | **FK** → `gateway_payments` |
-| `settlement_id` | `uuid` | **FK** → `settlements` que mandou estornar |
 | `reason` | `refund_reason` | `match_cancelled`, `walkover`, `hire_withdrawn`, `hire_no_show`, `hire_cancelled`, `deposit_return`, `other` |
 | `amount_cents` | `bigint` | `value` |
 | `status` | `refund_status` | `requested`, `sent`, `pending`, `awaiting_authorization`, `done`, `cancelled`, `failed` |
@@ -696,17 +699,17 @@ Módulo dono: **`settlement`**. Pendência ("saldo devedor"): o faltoso que não
 
 #### `debt_items`
 
-Módulo dono: **`settlement`**. Para quem vai cada parte da pendência (quadra, árbitro), para avisar "valor pendente" e "pendência quitada".
+Módulo dono: **`settlement`**. Para quem vai cada parte da pendência (quadra, árbitro, ou a plataforma), para avisar "valor pendente" e "pendência quitada".
 
 | Coluna | Tipo | Regra |
 | :--- | :--- | :--- |
 | `id` | `uuid` | **PK** `DEFAULT gen_random_uuid()` |
 | `debt_id` | `uuid` | **FK** → `debts` |
-| `payee_id` | `uuid` | **FK** → `payees` |
+| `payee_id` | `uuid` | **FK** → `payees`; nulo = devido à plataforma (ex.: os 5% do time inocente, Q2) |
 | `amount_cents` | `bigint` |  |
 | `created_at` | `timestamptz` | `NOT NULL DEFAULT now()` |
 
-Restrições: `UNIQUE (debt_id, payee_id)`.
+Restrições: `UNIQUE NULLS NOT DISTINCT (debt_id, payee_id)`.
 
 #### `ledger_accounts`
 
@@ -976,9 +979,10 @@ Módulo dono: **`worker`**. Fila do worker no próprio Postgres, se não for usa
 | `users` | `charges` | `payer_user_id` | 1:N | `RESTRICT` |
 | `users` | `notifications` | `user_id` | 1:N | `RESTRICT` |
 | `users` | `push_devices` | `user_id` | 1:N | `CASCADE` |
-| `users` | `profile_reports` | `reporter_user_id` | 1:N | `RESTRICT` |
+| `users` | `profile_reports` | `reporter_user_id / handled_by_user_id` | 1:N (×2) | `RESTRICT` |
 | `users` | `suggestions` | `user_id` | 1:N | `RESTRICT` |
 | `users` | `moderation_blocks` | `user_id` | 1:N | `RESTRICT` |
+| `cities` | `users` | `home_city_id` | 1:N | `RESTRICT` |
 | `cities` | `courts` | `city_id` | 1:N | `RESTRICT` |
 | `cities` | `teams` | `city_id` | 1:N | `RESTRICT` |
 | `cities` | `referees` | `city_id` | 1:N | `RESTRICT` |
@@ -991,25 +995,27 @@ Módulo dono: **`worker`**. Fila do worker no próprio Postgres, se não for usa
 | `payees` | `courts` | `payee_id` | 1:N | `RESTRICT` |
 | `payees` | `referees` | `payee_id` | 1:0..1 | `RESTRICT` |
 | `payees` | `rental_players` | `payee_id` | 1:0..1 | `RESTRICT` |
-| `teams` | `challenges` | `team_id` | 1:N | `RESTRICT` |
+| `teams` | `challenges` | `team_id / accepted_by_team_id` | 1:N (×2) | `RESTRICT` |
 | `matches` | `challenges` | `match_id` | 1:0..1 | `RESTRICT` |
 | `teams` | `player_openings` | `team_id` | 1:N | `RESTRICT` |
 | `matches` | `player_openings` | `match_id` | 1:N | `RESTRICT` |
 | `player_openings` | `opening_applications` | `opening_id` | 1:N | `CASCADE` |
 | `rental_players` | `opening_applications` | `rental_player_id` | 1:N | `RESTRICT` |
+| `hires` | `opening_applications` | `hire_id` | 1:0..1 | `RESTRICT` |
 | `bookings` | `matches` | `booking_id` | 1:1 | `RESTRICT` |
-| `teams` | `matches` | `home_team_id / away_team_id` | 1:N (×2) | `RESTRICT` |
+| `teams` | `matches` | `home_team_id / away_team_id / cancelled_by_team_id` | 1:N (×3) | `RESTRICT` |
 | `matches` | `team_invitations` | `match_id` | 1:N | `RESTRICT` |
 | `teams` | `team_invitations` | `team_id` | 1:N | `RESTRICT` |
 | `matches` | `check_ins` | `match_id` | 1:N | `RESTRICT` |
 | `teams` | `check_ins` | `team_id` | 1:N | `RESTRICT` |
 | `hires` | `check_ins` | `hire_id` | 1:0..1 | `RESTRICT` |
+| `users` | `check_ins` | `user_id` | 1:N | `RESTRICT` |
 | `matches` | `hires` | `match_id` | 1:N | `RESTRICT` |
 | `teams` | `hires` | `hiring_team_id` | 1:N | `RESTRICT` |
 | `referees` | `hires` | `referee_id` | 1:N | `RESTRICT` |
 | `rental_players` | `hires` | `rental_player_id` | 1:N | `RESTRICT` |
 | `hires` | `hire_shares` | `hire_id` | 1:1..2 | `RESTRICT` |
-| `teams` | `hire_shares` | `team_id` | 1:N | `RESTRICT` |
+| `teams` | `hire_shares` | `team_id / paid_by_team_id` | 1:N (×2) | `RESTRICT` |
 | `teams` | `charges` | `payer_team_id` | 1:N | `RESTRICT` |
 | `charges` | `charge_items` | `charge_id` | 1:N | `RESTRICT` |
 | `matches` | `charge_items` | `match_id` | 1:N | `RESTRICT` |
@@ -1025,6 +1031,10 @@ Módulo dono: **`worker`**. Fila do worker no próprio Postgres, se não for usa
 | `gateway_payments` | `escrow_holds` | `gateway_payment_id` | 1:N | `RESTRICT` |
 | `payees` | `escrow_holds` | `payee_id` | 1:N | `RESTRICT` |
 | `matches` | `settlements` | `match_id` | 1:N | `RESTRICT` |
+| `hires` | `settlements` | `hire_id` | 1:N | `RESTRICT` |
+| `teams` | `settlements` | `at_fault_team_id` | 1:N | `RESTRICT` |
+| `refunds` | `settlement_lines` | `refund_id` | 1:0..1 | `RESTRICT` |
+| `debts` | `settlement_lines` | `debt_id` | 1:0..1 | `RESTRICT` |
 | `settlements` | `settlement_lines` | `settlement_id` | 1:N | `RESTRICT` |
 | `charge_splits` | `settlement_lines` | `charge_split_id` | 1:N | `RESTRICT` |
 | `payees` | `settlement_lines` | `payee_id` | 1:N | `RESTRICT` |
@@ -1037,6 +1047,8 @@ Módulo dono: **`worker`**. Fila do worker no próprio Postgres, se não for usa
 | `payees` | `debt_items` | `payee_id` | 1:N | `RESTRICT` |
 | `payees` | `ledger_accounts` | `payee_id` | 1:N | `RESTRICT` |
 | `teams` | `ledger_accounts` | `team_id` | 1:N | `RESTRICT` |
+| `users` | `ledger_accounts` | `user_id` | 1:N | `RESTRICT` |
+| `charge_items` | `ledger_entries` | `charge_item_id` | 1:N | `RESTRICT` |
 | `ledger_transactions` | `ledger_entries` | `transaction_id` | 1:N (≥2) | `RESTRICT` |
 | `ledger_accounts` | `ledger_entries` | `account_id` | 1:N | `RESTRICT` |
 | `charges` | `ledger_transactions` | `charge_id` | 1:N | `RESTRICT` |
@@ -1325,8 +1337,8 @@ O modelo não decide nenhuma delas. As duas saídas cabem sem mudar o esquema, p
 
 | Regra do briefing | Saída do briefing no modelo | Saída do relatório no modelo |
 | :--- | :--- | :--- |
-| Caução da arbitragem | `charge_items.kind = 'referee_deposit'` com `payee_id` do árbitro (split com escrow), devolvida por `refunds.reason = 'deposit_return'`. o `CHECK` de `charge_items` exige `payee_id` e impede caução na conta da plataforma | sem `referee_deposit`; no W.O., `debts.reason = 'referee_share_replacement'` cobra do faltoso a metade que falta |
-| Quem cancela arca com os 5% do outro time | `debts.reason = 'cancellation_other_team_fee'` (nova cobrança a quem cancelou) | `settlement_lines.action = 'absorb_by_platform'`: o estorno da taxa sai da conta-pai (a parte de `value` fora de `splitRefunds`) |
+| Caução da arbitragem | `charge_items.kind = 'referee_deposit'` com `payee_id` do árbitro (split com escrow), devolvida por `refunds.reason = 'deposit_return'`. O `CHECK` de `charge_items` exige `payee_id` e impede caução na conta da plataforma | sem `referee_deposit`; no W.O., `debts.reason = 'referee_share_replacement'` cobra do faltoso a metade que falta |
+| Quem cancela arca com os 5% do outro time | `debts.reason = 'cancellation_other_team_fee'` com `debt_items.payee_id` nulo (devido à plataforma), cobrado numa nova cobrança a quem cancelou | `settlement_lines.action = 'absorb_by_platform'`: o estorno da taxa sai da conta-pai (a parte de `value` fora de `splitRefunds`) |
 | W.O.: presente perde 30% da sua metade | linha `release_to_payee` com 30% da metade do presente para a quadra | 30% da quadra inteira sai da parte do faltoso; a falta vira `debts.reason = 'walkover_shortfall'` |
 | 30% no W.O. e 5% que não volta | `rates = {"walkover_court": 0.30, ...}`, linha `keep_platform_fee` | tabela escalonada em `rates` e `policy_version`; a taxa volta por `refund_to_payer` quando quem pagou não deu causa |
 | Liberação no fim do jogo para cartão; tarifa não devolvida | `escrow_holds.released` no fim do jogo; `charge_items.payment_tariff` fora do estorno | texto do aviso usa `gateway_payments.estimated_credit_date`; o estorno pode incluir a tarifa para o time inocente |
