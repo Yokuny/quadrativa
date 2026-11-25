@@ -22,7 +22,8 @@
         "mcp-excalidraw-server@2.2.0"
       ],
       "env": {
-        "EXCALIDRAW_EXPORT_DIR": "${workspaceFolder}"
+        "EXCALIDRAW_EXPORT_DIR": "${workspaceFolder}",
+        "EXPRESS_SERVER_URL": "http://127.0.0.1:3050"
       }
     }
   },

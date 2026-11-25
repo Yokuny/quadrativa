@@ -20,7 +20,10 @@
       "args": [
         "-y",
         "mcp-excalidraw-server@2.2.0"
-      ]
+      ],
+      "env": {
+        "EXPRESS_SERVER_URL": "http://127.0.0.1:3050"
+      }
     }
   }
 }
