@@ -5,6 +5,16 @@
     "shd101wyy.markdown-preview-enhanced",
     "ms-python.python",
     "webnative.webnative",
-    "github.vscode-github-actions"
+    "github.vscode-github-actions",
+    "biomejs.biome",
+    "bradlc.vscode-tailwindcss",
+    "ms-playwright.playwright",
+    "ms-azuretools.vscode-docker",
+    "ms-azuretools.vscode-containers",
+    "inlang.vs-code-extension",
+    "christian-kohler.path-intellisense",
+    "formulahendry.auto-rename-tag",
+    "omthemes.omthemes",
+    "vscode-icons-team.vscode-icons"
   ]
 }
