@@ -13,6 +13,14 @@
       "headers": {
         "access_token": "${ASAAS_API_KEY}"
       }
+    },
+    "excalidraw": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-excalidraw-server@2.2.0"
+      ]
     }
   }
 }

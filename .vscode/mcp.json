@@ -13,6 +13,17 @@
       "headers": {
         "access_token": "${input:asaas-api-key}"
       }
+    },
+    "excalidraw": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-excalidraw-server@2.2.0"
+      ],
+      "env": {
+        "EXCALIDRAW_EXPORT_DIR": "${workspaceFolder}"
+      }
     }
   },
   "inputs": [
