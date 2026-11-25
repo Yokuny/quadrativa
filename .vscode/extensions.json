@@ -1,0 +1,10 @@
+{
+  "recommendations": [
+    "anthropic.claude-code",
+    "pomdtr.excalidraw-editor",
+    "shd101wyy.markdown-preview-enhanced",
+    "ms-python.python",
+    "webnative.webnative",
+    "github.vscode-github-actions"
+  ]
+}
